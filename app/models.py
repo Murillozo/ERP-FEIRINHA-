@@ -9,6 +9,8 @@ class Product:
     nome: str
     preco: float
     ativo: bool = True
+    barraquinha_id: int | None = None
+    barraquinha_nome: str | None = None
 
 
 @dataclass
@@ -36,3 +38,4 @@ class SaleItem:
     quantidade: float
     preco_unitario: float
     subtotal: float
+    barraquinha_nome: str | None = None

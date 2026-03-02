@@ -89,6 +89,7 @@ class POSWindow(QWidget):
         layout.addWidget(self.btn_finish)
 
         self.search_input.textChanged.connect(self.load_products)
+        self.barraquinha_combo.currentIndexChanged.connect(self.load_products)
         btn_add.clicked.connect(self.add_selected_product)
         self.products_table.itemDoubleClicked.connect(lambda *_: self.add_selected_product())
         btn_plus.clicked.connect(lambda: self.change_qty(1))
@@ -112,7 +113,12 @@ class POSWindow(QWidget):
                 self.barraquinha_combo.setCurrentIndex(idx)
 
     def load_products(self) -> None:
-        products = self.db.list_products(self.search_input.text(), include_inactive=False)
+        barraquinha_id = self.barraquinha_combo.currentData()
+        products = self.db.list_products(
+            self.search_input.text(),
+            include_inactive=False,
+            barraquinha_id=barraquinha_id,
+        )
         self.products_table.setRowCount(len(products))
         for row, p in enumerate(products):
             name_item = QTableWidgetItem(p.nome)

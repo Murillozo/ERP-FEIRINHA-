@@ -41,6 +41,7 @@ class SalesWindow(QWidget):
         btn_filter = QPushButton("Filtrar")
         btn_reprint = QPushButton("Reimprimir Recibo")
         btn_regen_pdf = QPushButton("Gerar PDF novamente")
+        btn_delete_sale = QPushButton("Excluir Pedido")
 
         self.sales_table = QTableWidget(0, 3)
         self.sales_table.setHorizontalHeaderLabels(["Data/Hora", "Barraquinha", "Total"])
@@ -61,6 +62,7 @@ class SalesWindow(QWidget):
         top.addStretch(1)
         top.addWidget(btn_reprint)
         top.addWidget(btn_regen_pdf)
+        top.addWidget(btn_delete_sale)
 
         layout = QVBoxLayout(self)
         layout.addLayout(top)
@@ -73,6 +75,7 @@ class SalesWindow(QWidget):
         self.sales_table.itemSelectionChanged.connect(self.load_sale_items)
         btn_reprint.clicked.connect(self.reprint)
         btn_regen_pdf.clicked.connect(self.regenerate_pdf)
+        btn_delete_sale.clicked.connect(self.delete_sale)
 
         self.load_barraquinhas_filter()
         self.load_sales()
@@ -137,6 +140,28 @@ class SalesWindow(QWidget):
             QMessageBox.information(self, "Histórico", "Recibo reimpresso com sucesso.")
         except Exception as exc:
             QMessageBox.warning(self, "Histórico", f"Falha na impressão: {exc}")
+
+    def delete_sale(self) -> None:
+        if self.current_sale is None:
+            QMessageBox.warning(self, "Histórico", "Selecione uma venda.")
+            return
+
+        confirm = QMessageBox.question(
+            self,
+            "Excluir Pedido",
+            f"Tem certeza que deseja excluir o pedido #{self.current_sale.id}?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+
+        try:
+            self.db.delete_sale(self.current_sale.id)
+            self.load_sales()
+            QMessageBox.information(self, "Histórico", "Pedido excluído com sucesso.")
+        except Exception as exc:
+            QMessageBox.warning(self, "Histórico", f"Falha ao excluir pedido: {exc}")
 
     def regenerate_pdf(self) -> None:
         if self.current_sale is None:

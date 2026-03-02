@@ -3,6 +3,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -31,21 +32,25 @@ class ProductsWindow(QWidget):
 
         self.nome_input = QLineEdit()
         self.preco_input = QLineEdit()
+        self.barraquinha_combo = QComboBox()
         self.ativo_checkbox = QCheckBox("Ativo")
+        self.barraquinha_combo.setCurrentIndex(0)
         self.ativo_checkbox.setChecked(True)
 
-        self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(["Nome", "Preço", "Ativo"])
+        self.table = QTableWidget(0, 4)
+        self.table.setHorizontalHeaderLabels(["Nome", "Preço", "Barraquinha", "Ativo"])
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
 
         btn_new = QPushButton("Novo")
         btn_save = QPushButton("Salvar")
         btn_remove = QPushButton("Desativar")
+        btn_delete = QPushButton("Excluir")
 
         form = QFormLayout()
         form.addRow(QLabel("Nome:"), self.nome_input)
         form.addRow(QLabel("Preço (R$):"), self.preco_input)
+        form.addRow(QLabel("Barraquinha:"), self.barraquinha_combo)
         form.addRow(QLabel("Status:"), self.ativo_checkbox)
 
         top = QHBoxLayout()
@@ -55,6 +60,7 @@ class ProductsWindow(QWidget):
         actions.addWidget(btn_new)
         actions.addWidget(btn_save)
         actions.addWidget(btn_remove)
+        actions.addWidget(btn_delete)
 
         layout = QVBoxLayout(self)
         layout.addLayout(top)
@@ -67,8 +73,22 @@ class ProductsWindow(QWidget):
         btn_new.clicked.connect(self.clear_form)
         btn_save.clicked.connect(self.save_product)
         btn_remove.clicked.connect(self.deactivate_product)
+        btn_delete.clicked.connect(self.delete_product)
 
+        self.load_barraquinhas()
         self.load_products()
+
+    def load_barraquinhas(self) -> None:
+        current_id = self.barraquinha_combo.currentData()
+        self.barraquinha_combo.clear()
+        self.barraquinha_combo.addItem("Selecione...", None)
+        for barraquinha in self.db.list_barraquinhas(include_inactive=False):
+            self.barraquinha_combo.addItem(barraquinha.nome, barraquinha.id)
+
+        if current_id is not None:
+            idx = self.barraquinha_combo.findData(current_id)
+            if idx >= 0:
+                self.barraquinha_combo.setCurrentIndex(idx)
 
     def load_products(self) -> None:
         products = self.db.list_products(self.search_input.text(), include_inactive=True)
@@ -78,7 +98,10 @@ class ProductsWindow(QWidget):
             name_item.setData(Qt.UserRole, p.id)
             self.table.setItem(row, 0, name_item)
             self.table.setItem(row, 1, QTableWidgetItem(f"{p.preco:.2f}"))
-            self.table.setItem(row, 2, QTableWidgetItem("Sim" if p.ativo else "Não"))
+            barraquinha_item = QTableWidgetItem(p.barraquinha_nome or "N/I")
+            barraquinha_item.setData(Qt.UserRole, p.barraquinha_id)
+            self.table.setItem(row, 2, barraquinha_item)
+            self.table.setItem(row, 3, QTableWidgetItem("Sim" if p.ativo else "Não"))
 
         self.table.resizeColumnsToContents()
 
@@ -89,7 +112,10 @@ class ProductsWindow(QWidget):
         self.selected_id = int(self.table.item(row, 0).data(Qt.UserRole))
         self.nome_input.setText(self.table.item(row, 0).text())
         self.preco_input.setText(self.table.item(row, 1).text())
-        self.ativo_checkbox.setChecked(self.table.item(row, 2).text() == "Sim")
+        barraquinha_id = self.table.item(row, 2).data(Qt.UserRole)
+        combo_idx = self.barraquinha_combo.findData(barraquinha_id)
+        self.barraquinha_combo.setCurrentIndex(combo_idx if combo_idx >= 0 else 0)
+        self.ativo_checkbox.setChecked(self.table.item(row, 3).text() == "Sim")
 
     def _validate_form(self) -> tuple[bool, float]:
         nome = self.nome_input.text().strip()
@@ -116,12 +142,14 @@ class ProductsWindow(QWidget):
 
         nome = self.nome_input.text().strip()
         ativo = self.ativo_checkbox.isChecked()
+        barraquinha_id = self.barraquinha_combo.currentData()
         try:
             if self.selected_id is None:
-                self.db.create_product(nome, preco, ativo)
+                self.db.create_product(nome, preco, ativo, barraquinha_id)
             else:
-                self.db.update_product(self.selected_id, nome, preco, ativo)
+                self.db.update_product(self.selected_id, nome, preco, ativo, barraquinha_id)
 
+            self.load_barraquinhas()
             self.load_products()
             self.products_changed.emit()
             QMessageBox.information(self, "Sucesso", "Produto salvo com sucesso.")
@@ -134,16 +162,42 @@ class ProductsWindow(QWidget):
             return
         try:
             self.db.deactivate_product(self.selected_id)
+            self.load_barraquinhas()
             self.load_products()
             self.products_changed.emit()
             QMessageBox.information(self, "Sucesso", "Produto desativado.")
         except Exception as exc:
             QMessageBox.critical(self, "Erro", f"Falha ao desativar: {exc}")
 
+    def delete_product(self) -> None:
+        if self.selected_id is None:
+            QMessageBox.warning(self, "Atenção", "Selecione um produto.")
+            return
+
+        confirm = QMessageBox.question(
+            self,
+            "Excluir produto",
+            "Tem certeza que deseja excluir este produto?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+
+        try:
+            self.db.delete_product(self.selected_id)
+            self.clear_form()
+            self.load_products()
+            self.products_changed.emit()
+            QMessageBox.information(self, "Sucesso", "Produto excluído.")
+        except Exception as exc:
+            QMessageBox.critical(self, "Erro", f"Falha ao excluir: {exc}")
+
     def clear_form(self) -> None:
         self.selected_id = None
         self.nome_input.clear()
         self.preco_input.clear()
+        self.barraquinha_combo.setCurrentIndex(0)
         self.ativo_checkbox.setChecked(True)
         self.table.clearSelection()
 

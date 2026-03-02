@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections import OrderedDict
 from typing import Iterable
 
 from .config import AppConfig
@@ -29,6 +30,14 @@ def _parse_hex(value: str) -> int:
 
 def _cut_name(name: str, size: int = 20) -> str:
     return name if len(name) <= size else f"{name[:size-1]}…"
+
+
+def _group_items_by_barraquinha(items: list[SaleItem]) -> list[tuple[str, list[SaleItem]]]:
+    grouped: OrderedDict[str, list[SaleItem]] = OrderedDict()
+    for item in items:
+        group_name = item.barraquinha_nome or "Sem barraquinha"
+        grouped.setdefault(group_name, []).append(item)
+    return list(grouped.items())
 
 
 class ReceiptPrinter:
@@ -60,15 +69,24 @@ class ReceiptPrinter:
         printer.set(align="left", bold=False, width=1, height=1)
         printer.text("-" * 32 + "\n")
 
-        for item in items:
-            name = _cut_name(item.nome_produto, 20)
-            printer.text(f"{name}\n")
-            printer.text(
-                f" {item.quantidade:.2f} x {item.preco_unitario:>.2f}"
-                f" = {item.subtotal:>.2f}\n"
-            )
+        grouped_items = _group_items_by_barraquinha(list(items))
+        for index, (group_name, group_items) in enumerate(grouped_items, start=1):
+            printer.set(bold=True)
+            printer.text(f"Grupo {index:02d} - {_cut_name(group_name, 20)}\n")
+            printer.set(bold=False)
 
-        printer.text("-" * 32 + "\n")
+            group_total = 0.0
+            for item in group_items:
+                name = _cut_name(item.nome_produto, 20)
+                printer.text(f"{name}\n")
+                printer.text(
+                    f" {item.quantidade:.2f} x {item.preco_unitario:>.2f}"
+                    f" = {item.subtotal:>.2f}\n"
+                )
+                group_total += float(item.subtotal)
+
+            printer.text(f" Subtotal grupo: {group_total:>.2f}\n")
+            printer.text("-" * 32 + "\n")
         printer.set(bold=True, align="right", width=2, height=2)
         printer.text(f"TOTAL: R$ {sale.total:.2f}\n")
         printer.set(bold=False, align="left", width=1, height=1)

@@ -57,6 +57,8 @@ class MainWindow(QMainWindow):
         self.products.products_changed.connect(self.pos.load_products)
         self.barraquinhas.barraquinhas_changed.connect(self.pos.load_barraquinhas)
         self.barraquinhas.barraquinhas_changed.connect(self.sales.load_barraquinhas_filter)
+        self.barraquinhas.barraquinhas_changed.connect(self.products.load_barraquinhas)
+        self.barraquinhas.barraquinhas_changed.connect(self.products.load_products)
         self.pos.sale_completed.connect(self.sales.load_sales)
 
 
