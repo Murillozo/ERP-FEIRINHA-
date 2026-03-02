@@ -45,15 +45,15 @@ class POSWindow(QWidget):
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Buscar produto...")
 
-        self.products_table = QTableWidget(0, 3)
-        self.products_table.setHorizontalHeaderLabels(["ID", "Nome", "Preço"])
+        self.products_table = QTableWidget(0, 2)
+        self.products_table.setHorizontalHeaderLabels(["Nome", "Preço"])
         self.products_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.products_table.setEditTriggers(QTableWidget.NoEditTriggers)
 
         btn_add = QPushButton("Adicionar")
 
-        self.cart_table = QTableWidget(0, 5)
-        self.cart_table.setHorizontalHeaderLabels(["ID", "Nome", "Qtd", "Unitário", "Subtotal"])
+        self.cart_table = QTableWidget(0, 4)
+        self.cart_table.setHorizontalHeaderLabels(["Nome", "Qtd", "Unitário", "Subtotal"])
         self.cart_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.cart_table.setEditTriggers(QTableWidget.NoEditTriggers)
 
@@ -115,9 +115,10 @@ class POSWindow(QWidget):
         products = self.db.list_products(self.search_input.text(), include_inactive=False)
         self.products_table.setRowCount(len(products))
         for row, p in enumerate(products):
-            self.products_table.setItem(row, 0, QTableWidgetItem(str(p.id)))
-            self.products_table.setItem(row, 1, QTableWidgetItem(p.nome))
-            self.products_table.setItem(row, 2, QTableWidgetItem(f"{p.preco:.2f}"))
+            name_item = QTableWidgetItem(p.nome)
+            name_item.setData(Qt.UserRole, p.id)
+            self.products_table.setItem(row, 0, name_item)
+            self.products_table.setItem(row, 1, QTableWidgetItem(f"{p.preco:.2f}"))
 
         self.products_table.resizeColumnsToContents()
 
@@ -125,9 +126,9 @@ class POSWindow(QWidget):
         row = self.products_table.currentRow()
         if row < 0:
             return
-        product_id = int(self.products_table.item(row, 0).text())
-        name = self.products_table.item(row, 1).text()
-        price = float(self.products_table.item(row, 2).text())
+        product_id = int(self.products_table.item(row, 0).data(Qt.UserRole))
+        name = self.products_table.item(row, 0).text()
+        price = float(self.products_table.item(row, 1).text())
 
         if product_id not in self.cart:
             self.cart[product_id] = {
@@ -150,11 +151,12 @@ class POSWindow(QWidget):
 
         for row, item in enumerate(items):
             total += float(item["subtotal"])
-            self.cart_table.setItem(row, 0, QTableWidgetItem(str(item["produto_id"])))
-            self.cart_table.setItem(row, 1, QTableWidgetItem(str(item["nome_produto"])))
-            self.cart_table.setItem(row, 2, QTableWidgetItem(f"{float(item['quantidade']):.2f}"))
-            self.cart_table.setItem(row, 3, QTableWidgetItem(f"{float(item['preco_unitario']):.2f}"))
-            self.cart_table.setItem(row, 4, QTableWidgetItem(f"{float(item['subtotal']):.2f}"))
+            name_item = QTableWidgetItem(str(item["nome_produto"]))
+            name_item.setData(Qt.UserRole, item["produto_id"])
+            self.cart_table.setItem(row, 0, name_item)
+            self.cart_table.setItem(row, 1, QTableWidgetItem(f"{float(item['quantidade']):.2f}"))
+            self.cart_table.setItem(row, 2, QTableWidgetItem(f"{float(item['preco_unitario']):.2f}"))
+            self.cart_table.setItem(row, 3, QTableWidgetItem(f"{float(item['subtotal']):.2f}"))
 
         self.cart_table.resizeColumnsToContents()
         self.total_label.setText(f"Total: R$ {total:.2f}")
@@ -163,7 +165,7 @@ class POSWindow(QWidget):
         row = self.cart_table.currentRow()
         if row < 0:
             return None
-        return int(self.cart_table.item(row, 0).text())
+        return int(self.cart_table.item(row, 0).data(Qt.UserRole))
 
     def change_qty(self, delta: float) -> None:
         product_id = self._current_cart_product_id()

@@ -34,8 +34,8 @@ class ProductsWindow(QWidget):
         self.ativo_checkbox = QCheckBox("Ativo")
         self.ativo_checkbox.setChecked(True)
 
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["ID", "Nome", "Preço", "Ativo"])
+        self.table = QTableWidget(0, 3)
+        self.table.setHorizontalHeaderLabels(["Nome", "Preço", "Ativo"])
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
 
@@ -74,10 +74,11 @@ class ProductsWindow(QWidget):
         products = self.db.list_products(self.search_input.text(), include_inactive=True)
         self.table.setRowCount(len(products))
         for row, p in enumerate(products):
-            self.table.setItem(row, 0, QTableWidgetItem(str(p.id)))
-            self.table.setItem(row, 1, QTableWidgetItem(p.nome))
-            self.table.setItem(row, 2, QTableWidgetItem(f"{p.preco:.2f}"))
-            self.table.setItem(row, 3, QTableWidgetItem("Sim" if p.ativo else "Não"))
+            name_item = QTableWidgetItem(p.nome)
+            name_item.setData(Qt.UserRole, p.id)
+            self.table.setItem(row, 0, name_item)
+            self.table.setItem(row, 1, QTableWidgetItem(f"{p.preco:.2f}"))
+            self.table.setItem(row, 2, QTableWidgetItem("Sim" if p.ativo else "Não"))
 
         self.table.resizeColumnsToContents()
 
@@ -85,10 +86,10 @@ class ProductsWindow(QWidget):
         row = self.table.currentRow()
         if row < 0:
             return
-        self.selected_id = int(self.table.item(row, 0).text())
-        self.nome_input.setText(self.table.item(row, 1).text())
-        self.preco_input.setText(self.table.item(row, 2).text())
-        self.ativo_checkbox.setChecked(self.table.item(row, 3).text() == "Sim")
+        self.selected_id = int(self.table.item(row, 0).data(Qt.UserRole))
+        self.nome_input.setText(self.table.item(row, 0).text())
+        self.preco_input.setText(self.table.item(row, 1).text())
+        self.ativo_checkbox.setChecked(self.table.item(row, 2).text() == "Sim")
 
     def _validate_form(self) -> tuple[bool, float]:
         nome = self.nome_input.text().strip()

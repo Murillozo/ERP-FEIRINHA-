@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
@@ -41,8 +42,8 @@ class SalesWindow(QWidget):
         btn_reprint = QPushButton("Reimprimir Recibo")
         btn_regen_pdf = QPushButton("Gerar PDF novamente")
 
-        self.sales_table = QTableWidget(0, 4)
-        self.sales_table.setHorizontalHeaderLabels(["ID", "Data/Hora", "Barraquinha", "Total"])
+        self.sales_table = QTableWidget(0, 3)
+        self.sales_table.setHorizontalHeaderLabels(["Data/Hora", "Barraquinha", "Total"])
         self.sales_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.sales_table.setEditTriggers(QTableWidget.NoEditTriggers)
 
@@ -94,10 +95,11 @@ class SalesWindow(QWidget):
         self.sales_table.setRowCount(len(sales))
 
         for row, sale in enumerate(sales):
-            self.sales_table.setItem(row, 0, QTableWidgetItem(str(sale.id)))
-            self.sales_table.setItem(row, 1, QTableWidgetItem(sale.datahora))
-            self.sales_table.setItem(row, 2, QTableWidgetItem(sale.barraquinha_nome or "N/I"))
-            self.sales_table.setItem(row, 3, QTableWidgetItem(f"{sale.total:.2f}"))
+            datetime_item = QTableWidgetItem(sale.datahora)
+            datetime_item.setData(Qt.UserRole, sale.id)
+            self.sales_table.setItem(row, 0, datetime_item)
+            self.sales_table.setItem(row, 1, QTableWidgetItem(sale.barraquinha_nome or "N/I"))
+            self.sales_table.setItem(row, 2, QTableWidgetItem(f"{sale.total:.2f}"))
 
         self.sales_table.resizeColumnsToContents()
         self.items_table.setRowCount(0)
@@ -108,7 +110,7 @@ class SalesWindow(QWidget):
         if row < 0:
             return
 
-        sale_id = int(self.sales_table.item(row, 0).text())
+        sale_id = int(self.sales_table.item(row, 0).data(Qt.UserRole))
         sale = self.db.sale_by_id(sale_id)
         if sale is None:
             return
@@ -143,6 +145,7 @@ class SalesWindow(QWidget):
         items = self.db.sale_items(self.current_sale.id)
         try:
             path = self.pdf_generator.generate_sale_pdf(self.current_sale, items)
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
             QMessageBox.information(self, "Histórico", f"PDF gerado: {path}")
         except Exception as exc:
             QMessageBox.warning(self, "Histórico", f"Falha ao gerar PDF: {exc}")
