@@ -5,12 +5,14 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 
-class AppConfig(TypedDict):
+class AppConfig(TypedDict, total=False):
     nome_da_loja: str
     tipo_impressora: str
     usb_vendor_id: str
     usb_product_id: str
     cortar_papel: bool
+    gerar_pdf_automaticamente: bool
+    printer_name: str
 
 
 DEFAULT_CONFIG: AppConfig = {
@@ -19,6 +21,7 @@ DEFAULT_CONFIG: AppConfig = {
     "usb_vendor_id": "0x0000",
     "usb_product_id": "0x0000",
     "cortar_papel": True,
+    "gerar_pdf_automaticamente": True,
 }
 
 

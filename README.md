@@ -2,16 +2,11 @@
 
 Sistema simples de PDV para feirinha/mercadinho com:
 - Cadastro de produtos
-- Tela de vendas (carrinho + fechamento)
-- Impressão térmica ESC/POS
+
 - Histórico de vendas e reimpressão
 
 ## Stack
-- Python 3.11+
-- PySide6
-- SQLite local
-- python-escpos
-- PyInstaller
+
 
 ## Estrutura
 
@@ -22,8 +17,7 @@ Sistema simples de PDV para feirinha/mercadinho com:
   models.py
   config.py
   printing.py
-  /ui
-    products_window.py
+
     pos_window.py
     sales_window.py
 /assets
@@ -52,15 +46,7 @@ python -m app.main
 Na primeira execução o sistema cria automaticamente:
 - `data/pdv.sqlite`
 - `data/config.json`
-- `logs/app.log`
 
-Também inclui seed opcional com 10 produtos iniciais.
-
-## Configuração da impressora térmica
-
-Arquivo: `data/config.json`
-
-Exemplo (USB principal):
 
 ```json
 {
@@ -68,7 +54,7 @@ Exemplo (USB principal):
   "tipo_impressora": "usb",
   "usb_vendor_id": "0x1234",
   "usb_product_id": "0x5678",
-  "cortar_papel": true
+
 }
 ```
 
@@ -78,7 +64,6 @@ Exemplo (USB principal):
 - `usb_vendor_id` e `usb_product_id`: IDs da impressora USB
 - `cortar_papel`: `true/false`
 
-> Se não houver impressora conectada, a venda é salva mesmo assim e o sistema mostra aviso. Você pode reimprimir no Histórico.
 
 ## Build para `.exe` (PyInstaller)
 
@@ -88,14 +73,4 @@ Comando exemplo solicitado:
 pyinstaller --noconsole --onefile app/main.py --name FeiraPDV
 ```
 
-Opcional (ícone):
-
-```bash
-pyinstaller --noconsole --onefile app/main.py --name FeiraPDV --icon assets/icon.ico
-```
-
-## Atalhos úteis
-- `Enter`: finalizar venda (tela PDV)
-- `Esc`: limpar seleção
-- `Ctrl+F`: focar busca
 

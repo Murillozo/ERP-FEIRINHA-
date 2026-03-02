@@ -73,6 +73,7 @@ class ReceiptPrinter:
         printer.text(f"TOTAL: R$ {sale.total:.2f}\n")
         printer.set(bold=False, align="left", width=1, height=1)
         printer.text(f"Data/Hora: {sale.datahora}\n")
+        printer.text(f"Barraquinha: {sale.barraquinha_nome or 'N/I'}\n")
         printer.set(align="center")
         printer.text("Obrigado!\n\n")
 

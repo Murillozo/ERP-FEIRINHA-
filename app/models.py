@@ -12,10 +12,19 @@ class Product:
 
 
 @dataclass
+class Barraquinha:
+    id: int
+    nome: str
+    ativo: bool = True
+
+
+@dataclass
 class Sale:
     id: int
     datahora: str
     total: float
+    barraquinha_id: int | None = None
+    barraquinha_nome: str | None = None
 
 
 @dataclass

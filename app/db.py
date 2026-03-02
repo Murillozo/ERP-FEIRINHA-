@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-from .models import Product, Sale, SaleItem
+from .models import Barraquinha, Product, Sale, SaleItem
 
 
 class Database:
@@ -46,9 +46,23 @@ class Database:
                     subtotal REAL NOT NULL,
                     FOREIGN KEY(venda_id) REFERENCES vendas(id)
                 );
+
+                CREATE TABLE IF NOT EXISTS barraquinhas(
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nome TEXT NOT NULL,
+                    ativo INTEGER NOT NULL DEFAULT 1
+                );
                 """
             )
+            self._migrate_vendas_add_barraquinha(conn)
             self._seed_products(conn)
+            self._seed_barraquinhas(conn)
+
+    def _migrate_vendas_add_barraquinha(self, conn: sqlite3.Connection) -> None:
+        cols = conn.execute("PRAGMA table_info(vendas)").fetchall()
+        col_names = {c["name"] for c in cols}
+        if "barraquinha_id" not in col_names:
+            conn.execute("ALTER TABLE vendas ADD COLUMN barraquinha_id INTEGER")
 
     def _seed_products(self, conn: sqlite3.Connection) -> None:
         count = conn.execute("SELECT COUNT(*) FROM produtos").fetchone()[0]
@@ -70,6 +84,15 @@ class Database:
         conn.executemany(
             "INSERT INTO produtos(nome, preco, ativo) VALUES (?, ?, 1)",
             seed,
+        )
+
+    def _seed_barraquinhas(self, conn: sqlite3.Connection) -> None:
+        count = conn.execute("SELECT COUNT(*) FROM barraquinhas").fetchone()[0]
+        if count > 0:
+            return
+        conn.executemany(
+            "INSERT INTO barraquinhas(nome, ativo) VALUES (?, 1)",
+            [("Barraquinha Principal",), ("Hortifruti",), ("Mercearia",)],
         )
 
     def list_products(self, search: str = "", include_inactive: bool = False) -> list[Product]:
@@ -104,6 +127,35 @@ class Database:
         with self.connect() as conn:
             conn.execute("UPDATE produtos SET ativo=0 WHERE id=?", (product_id,))
 
+    def list_barraquinhas(self, include_inactive: bool = False) -> list[Barraquinha]:
+        where = "" if include_inactive else "WHERE ativo = 1"
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"SELECT id, nome, ativo FROM barraquinhas {where} ORDER BY nome"
+            ).fetchall()
+        return [Barraquinha(id=r["id"], nome=r["nome"], ativo=bool(r["ativo"])) for r in rows]
+
+    def create_barraquinha(self, nome: str, ativo: bool = True) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO barraquinhas(nome, ativo) VALUES (?, ?)",
+                (nome.strip(), int(ativo)),
+            )
+
+    def update_barraquinha(self, barraquinha_id: int, nome: str, ativo: bool) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE barraquinhas SET nome=?, ativo=? WHERE id=?",
+                (nome.strip(), int(ativo), barraquinha_id),
+            )
+
+    def set_barraquinha_active(self, barraquinha_id: int, ativo: bool) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE barraquinhas SET ativo=? WHERE id=?",
+                (int(ativo), barraquinha_id),
+            )
+
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
         conn = self.connect()
@@ -117,13 +169,18 @@ class Database:
         finally:
             conn.close()
 
-    def create_sale(self, datahora: str, items: list[dict[str, float | int | str]]) -> int:
+    def create_sale(
+        self,
+        datahora: str,
+        items: list[dict[str, float | int | str]],
+        barraquinha_id: int,
+    ) -> int:
         total = float(sum(float(item["subtotal"]) for item in items))
 
         with self.transaction() as conn:
             cur = conn.execute(
-                "INSERT INTO vendas(datahora, total) VALUES (?, ?)",
-                (datahora, total),
+                "INSERT INTO vendas(datahora, total, barraquinha_id) VALUES (?, ?, ?)",
+                (datahora, total, barraquinha_id),
             )
             venda_id = int(cur.lastrowid)
             for item in items:
@@ -144,19 +201,42 @@ class Database:
                 )
         return venda_id
 
-    def list_sales(self, date_prefix: str | None = None) -> list[Sale]:
-        where = ""
-        params: list[str] = []
+    def list_sales(
+        self,
+        date_prefix: str | None = None,
+        barraquinha_id: int | None = None,
+    ) -> list[Sale]:
+        where_parts: list[str] = []
+        params: list[object] = []
+
         if date_prefix:
-            where = "WHERE datahora LIKE ?"
+            where_parts.append("v.datahora LIKE ?")
             params.append(f"{date_prefix}%")
+        if barraquinha_id is not None:
+            where_parts.append("v.barraquinha_id = ?")
+            params.append(barraquinha_id)
+
+        where = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+        query = f"""
+            SELECT v.id, v.datahora, v.total, v.barraquinha_id, b.nome AS barraquinha_nome
+            FROM vendas v
+            LEFT JOIN barraquinhas b ON b.id = v.barraquinha_id
+            {where}
+            ORDER BY v.id DESC
+        """
 
         with self.connect() as conn:
-            rows = conn.execute(
-                f"SELECT id, datahora, total FROM vendas {where} ORDER BY id DESC",
-                params,
-            ).fetchall()
-        return [Sale(id=r["id"], datahora=r["datahora"], total=r["total"]) for r in rows]
+            rows = conn.execute(query, params).fetchall()
+        return [
+            Sale(
+                id=r["id"],
+                datahora=r["datahora"],
+                total=r["total"],
+                barraquinha_id=r["barraquinha_id"],
+                barraquinha_nome=r["barraquinha_nome"],
+            )
+            for r in rows
+        ]
 
     def sale_items(self, venda_id: int) -> list[SaleItem]:
         with self.connect() as conn:
@@ -185,9 +265,20 @@ class Database:
     def sale_by_id(self, venda_id: int) -> Sale | None:
         with self.connect() as conn:
             row = conn.execute(
-                "SELECT id, datahora, total FROM vendas WHERE id=?",
+                """
+                SELECT v.id, v.datahora, v.total, v.barraquinha_id, b.nome AS barraquinha_nome
+                FROM vendas v
+                LEFT JOIN barraquinhas b ON b.id = v.barraquinha_id
+                WHERE v.id=?
+                """,
                 (venda_id,),
             ).fetchone()
         if row is None:
             return None
-        return Sale(id=row["id"], datahora=row["datahora"], total=row["total"])
+        return Sale(
+            id=row["id"],
+            datahora=row["datahora"],
+            total=row["total"],
+            barraquinha_id=row["barraquinha_id"],
+            barraquinha_nome=row["barraquinha_nome"],
+        )

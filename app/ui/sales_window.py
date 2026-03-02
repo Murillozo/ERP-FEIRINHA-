@@ -4,6 +4,7 @@ from datetime import datetime
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QComboBox,
     QDateEdit,
     QHBoxLayout,
     QLabel,
@@ -17,14 +18,16 @@ from PySide6.QtWidgets import (
 
 from app.db import Database
 from app.models import Sale
+from app.pdf_generator import ReceiptPDFGenerator
 from app.printing import ReceiptPrinter
 
 
 class SalesWindow(QWidget):
-    def __init__(self, db: Database, printer: ReceiptPrinter) -> None:
+    def __init__(self, db: Database, printer: ReceiptPrinter, pdf_generator: ReceiptPDFGenerator) -> None:
         super().__init__()
         self.db = db
         self.printer = printer
+        self.pdf_generator = pdf_generator
         self.current_sale: Sale | None = None
 
         self.date_filter = QDateEdit()
@@ -32,11 +35,14 @@ class SalesWindow(QWidget):
         self.date_filter.setDate(datetime.now().date())
         self.date_filter.setDisplayFormat("dd/MM/yyyy")
 
+        self.barraquinha_filter = QComboBox()
+
         btn_filter = QPushButton("Filtrar")
         btn_reprint = QPushButton("Reimprimir Recibo")
+        btn_regen_pdf = QPushButton("Gerar PDF novamente")
 
-        self.sales_table = QTableWidget(0, 3)
-        self.sales_table.setHorizontalHeaderLabels(["ID", "Data/Hora", "Total"])
+        self.sales_table = QTableWidget(0, 4)
+        self.sales_table.setHorizontalHeaderLabels(["ID", "Data/Hora", "Barraquinha", "Total"])
         self.sales_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.sales_table.setEditTriggers(QTableWidget.NoEditTriggers)
 
@@ -48,9 +54,12 @@ class SalesWindow(QWidget):
         top = QHBoxLayout()
         top.addWidget(QLabel("Data:"))
         top.addWidget(self.date_filter)
+        top.addWidget(QLabel("Barraquinha:"))
+        top.addWidget(self.barraquinha_filter)
         top.addWidget(btn_filter)
         top.addStretch(1)
         top.addWidget(btn_reprint)
+        top.addWidget(btn_regen_pdf)
 
         layout = QVBoxLayout(self)
         layout.addLayout(top)
@@ -62,18 +71,33 @@ class SalesWindow(QWidget):
         btn_filter.clicked.connect(self.load_sales)
         self.sales_table.itemSelectionChanged.connect(self.load_sale_items)
         btn_reprint.clicked.connect(self.reprint)
+        btn_regen_pdf.clicked.connect(self.regenerate_pdf)
 
+        self.load_barraquinhas_filter()
         self.load_sales()
+
+    def load_barraquinhas_filter(self) -> None:
+        current = self.barraquinha_filter.currentData()
+        self.barraquinha_filter.clear()
+        self.barraquinha_filter.addItem("Todas", None)
+        for b in self.db.list_barraquinhas(include_inactive=True):
+            self.barraquinha_filter.addItem(b.nome, b.id)
+
+        idx = self.barraquinha_filter.findData(current)
+        if idx >= 0:
+            self.barraquinha_filter.setCurrentIndex(idx)
 
     def load_sales(self) -> None:
         day = self.date_filter.date().toString("dd/MM/yyyy")
-        sales = self.db.list_sales(day)
+        barraquinha_id = self.barraquinha_filter.currentData()
+        sales = self.db.list_sales(day, barraquinha_id)
         self.sales_table.setRowCount(len(sales))
 
         for row, sale in enumerate(sales):
             self.sales_table.setItem(row, 0, QTableWidgetItem(str(sale.id)))
             self.sales_table.setItem(row, 1, QTableWidgetItem(sale.datahora))
-            self.sales_table.setItem(row, 2, QTableWidgetItem(f"{sale.total:.2f}"))
+            self.sales_table.setItem(row, 2, QTableWidgetItem(sale.barraquinha_nome or "N/I"))
+            self.sales_table.setItem(row, 3, QTableWidgetItem(f"{sale.total:.2f}"))
 
         self.sales_table.resizeColumnsToContents()
         self.items_table.setRowCount(0)
@@ -111,6 +135,17 @@ class SalesWindow(QWidget):
             QMessageBox.information(self, "Histórico", "Recibo reimpresso com sucesso.")
         except Exception as exc:
             QMessageBox.warning(self, "Histórico", f"Falha na impressão: {exc}")
+
+    def regenerate_pdf(self) -> None:
+        if self.current_sale is None:
+            QMessageBox.warning(self, "Histórico", "Selecione uma venda.")
+            return
+        items = self.db.sale_items(self.current_sale.id)
+        try:
+            path = self.pdf_generator.generate_sale_pdf(self.current_sale, items)
+            QMessageBox.information(self, "Histórico", f"PDF gerado: {path}")
+        except Exception as exc:
+            QMessageBox.warning(self, "Histórico", f"Falha ao gerar PDF: {exc}")
 
     def keyPressEvent(self, event) -> None:  # type: ignore[override]
         if event.key() == Qt.Key_Escape:

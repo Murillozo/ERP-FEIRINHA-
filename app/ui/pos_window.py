@@ -4,6 +4,7 @@ from datetime import datetime
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QComboBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -15,19 +16,31 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.config import AppConfig
 from app.db import Database
 from app.models import Sale
+from app.pdf_generator import ReceiptPDFGenerator
 from app.printing import ReceiptPrinter
 
 
 class POSWindow(QWidget):
     sale_completed = Signal()
 
-    def __init__(self, db: Database, printer: ReceiptPrinter) -> None:
+    def __init__(
+        self,
+        db: Database,
+        printer: ReceiptPrinter,
+        pdf_generator: ReceiptPDFGenerator,
+        config: AppConfig,
+    ) -> None:
         super().__init__()
         self.db = db
         self.printer = printer
+        self.pdf_generator = pdf_generator
+        self.config = config
         self.cart: dict[int, dict[str, float | int | str]] = {}
+
+        self.barraquinha_combo = QComboBox()
 
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Buscar produto...")
@@ -53,6 +66,11 @@ class POSWindow(QWidget):
         self.total_label.setStyleSheet("font-size: 20px; font-weight: bold;")
 
         layout = QVBoxLayout(self)
+        bar_row = QHBoxLayout()
+        bar_row.addWidget(QLabel("Barraquinha:"))
+        bar_row.addWidget(self.barraquinha_combo)
+        layout.addLayout(bar_row)
+
         search_row = QHBoxLayout()
         search_row.addWidget(self.search_input)
         search_row.addWidget(btn_add)
@@ -78,7 +96,20 @@ class POSWindow(QWidget):
         btn_remove.clicked.connect(self.remove_item)
         self.btn_finish.clicked.connect(self.finalize_sale)
 
+        self.load_barraquinhas()
         self.load_products()
+
+    def load_barraquinhas(self) -> None:
+        current_id = self.barraquinha_combo.currentData()
+        self.barraquinha_combo.clear()
+        self.barraquinha_combo.addItem("Selecione...", None)
+        for b in self.db.list_barraquinhas(include_inactive=False):
+            self.barraquinha_combo.addItem(b.nome, b.id)
+
+        if current_id is not None:
+            idx = self.barraquinha_combo.findData(current_id)
+            if idx >= 0:
+                self.barraquinha_combo.setCurrentIndex(idx)
 
     def load_products(self) -> None:
         products = self.db.list_products(self.search_input.text(), include_inactive=False)
@@ -162,16 +193,24 @@ class POSWindow(QWidget):
             QMessageBox.warning(self, "PDV", "Carrinho vazio.")
             return
 
+        barraquinha_id = self.barraquinha_combo.currentData()
+        if barraquinha_id is None:
+            QMessageBox.warning(self, "PDV", "Selecione uma barraquinha antes de finalizar.")
+            return
+
         datahora = datetime.now().strftime("%d/%m/%Y %H:%M")
         items = list(self.cart.values())
 
         try:
-            sale_id = self.db.create_sale(datahora, items)
+            sale_id = self.db.create_sale(datahora, items, int(barraquinha_id))
         except Exception as exc:
             QMessageBox.critical(self, "Erro", f"Não foi possível salvar venda: {exc}")
             return
 
-        sale = Sale(id=sale_id, datahora=datahora, total=sum(float(i["subtotal"]) for i in items))
+        sale = self.db.sale_by_id(sale_id)
+        if sale is None:
+            QMessageBox.critical(self, "Erro", "Venda salva, mas não foi possível recarregar os dados.")
+            return
         sale_items = self.db.sale_items(sale_id)
 
         try:
@@ -183,6 +222,12 @@ class POSWindow(QWidget):
                 "Venda salva / impressão falhou",
                 f"Venda #{sale_id} salva com sucesso, mas a impressão falhou.\n\nErro: {exc}",
             )
+
+        if self.config.get("gerar_pdf_automaticamente", True):
+            try:
+                self.pdf_generator.generate_sale_pdf(sale, sale_items)
+            except Exception as exc:
+                QMessageBox.warning(self, "PDF", f"Venda salva, mas falhou ao gerar PDF: {exc}")
 
         self.cart.clear()
         self.refresh_cart_table()
