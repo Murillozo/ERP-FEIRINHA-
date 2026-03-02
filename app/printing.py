@@ -63,6 +63,8 @@ class ReceiptPrinter:
         for item in items:
             name = _cut_name(item.nome_produto, 20)
             printer.text(f"{name}\n")
+            if item.barraquinha_nome:
+                printer.text(f"  [{_cut_name(item.barraquinha_nome, 20)}]\n")
             printer.text(
                 f" {item.quantidade:.2f} x {item.preco_unitario:>.2f}"
                 f" = {item.subtotal:>.2f}\n"

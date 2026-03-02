@@ -27,7 +27,9 @@ class Database:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     nome TEXT NOT NULL,
                     preco REAL NOT NULL,
-                    ativo INTEGER NOT NULL DEFAULT 1
+                    ativo INTEGER NOT NULL DEFAULT 1,
+                    barraquinha_id INTEGER,
+                    FOREIGN KEY(barraquinha_id) REFERENCES barraquinhas(id)
                 );
 
                 CREATE TABLE IF NOT EXISTS vendas(
@@ -55,14 +57,22 @@ class Database:
                 """
             )
             self._migrate_vendas_add_barraquinha(conn)
-            self._seed_products(conn)
+            self._migrate_produtos_add_barraquinha(conn)
             self._seed_barraquinhas(conn)
+            self._seed_products(conn)
 
     def _migrate_vendas_add_barraquinha(self, conn: sqlite3.Connection) -> None:
         cols = conn.execute("PRAGMA table_info(vendas)").fetchall()
         col_names = {c["name"] for c in cols}
         if "barraquinha_id" not in col_names:
             conn.execute("ALTER TABLE vendas ADD COLUMN barraquinha_id INTEGER")
+
+
+    def _migrate_produtos_add_barraquinha(self, conn: sqlite3.Connection) -> None:
+        cols = conn.execute("PRAGMA table_info(produtos)").fetchall()
+        col_names = {c["name"] for c in cols}
+        if "barraquinha_id" not in col_names:
+            conn.execute("ALTER TABLE produtos ADD COLUMN barraquinha_id INTEGER")
 
     def _seed_products(self, conn: sqlite3.Connection) -> None:
         count = conn.execute("SELECT COUNT(*) FROM produtos").fetchone()[0]
@@ -81,9 +91,14 @@ class Database:
             ("Café 500g", 15.90),
             ("Leite 1L", 4.80),
         ]
+        default_barraquinha = conn.execute(
+            "SELECT id FROM barraquinhas WHERE ativo=1 ORDER BY id LIMIT 1"
+        ).fetchone()
+        default_barraquinha_id = default_barraquinha[0] if default_barraquinha else None
+
         conn.executemany(
-            "INSERT INTO produtos(nome, preco, ativo) VALUES (?, ?, 1)",
-            seed,
+            "INSERT INTO produtos(nome, preco, ativo, barraquinha_id) VALUES (?, ?, 1, ?)",
+            [(nome, preco, default_barraquinha_id) for nome, preco in seed],
         )
 
     def _seed_barraquinhas(self, conn: sqlite3.Connection) -> None:
@@ -95,32 +110,70 @@ class Database:
             [("Barraquinha Principal",), ("Hortifruti",), ("Mercearia",)],
         )
 
-    def list_products(self, search: str = "", include_inactive: bool = False) -> list[Product]:
-        where = "WHERE 1=1"
+    def list_products(
+        self,
+        search: str = "",
+        include_inactive: bool = False,
+        barraquinha_id: int | None = None,
+    ) -> list[Product]:
+        where_parts: list[str] = []
         params: list[object] = []
         if search:
-            where += " AND nome LIKE ?"
+            where_parts.append("p.nome LIKE ?")
             params.append(f"%{search}%")
         if not include_inactive:
-            where += " AND ativo = 1"
+            where_parts.append("p.ativo = 1")
+        if barraquinha_id is not None:
+            where_parts.append("p.barraquinha_id = ?")
+            params.append(barraquinha_id)
 
-        query = f"SELECT id, nome, preco, ativo FROM produtos {where} ORDER BY nome"
+        where = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+        query = f"""
+            SELECT p.id, p.nome, p.preco, p.ativo, p.barraquinha_id, b.nome AS barraquinha_nome
+            FROM produtos p
+            LEFT JOIN barraquinhas b ON b.id = p.barraquinha_id
+            {where}
+            ORDER BY p.nome
+        """
         with self.connect() as conn:
             rows = conn.execute(query, params).fetchall()
-        return [Product(id=r["id"], nome=r["nome"], preco=r["preco"], ativo=bool(r["ativo"])) for r in rows]
+        return [
+            Product(
+                id=r["id"],
+                nome=r["nome"],
+                preco=r["preco"],
+                ativo=bool(r["ativo"]),
+                barraquinha_id=r["barraquinha_id"],
+                barraquinha_nome=r["barraquinha_nome"],
+            )
+            for r in rows
+        ]
 
-    def create_product(self, nome: str, preco: float, ativo: bool = True) -> None:
+    def create_product(
+        self,
+        nome: str,
+        preco: float,
+        ativo: bool = True,
+        barraquinha_id: int | None = None,
+    ) -> None:
         with self.connect() as conn:
             conn.execute(
-                "INSERT INTO produtos(nome, preco, ativo) VALUES (?, ?, ?)",
-                (nome.strip(), preco, int(ativo)),
+                "INSERT INTO produtos(nome, preco, ativo, barraquinha_id) VALUES (?, ?, ?, ?)",
+                (nome.strip(), preco, int(ativo), barraquinha_id),
             )
 
-    def update_product(self, product_id: int, nome: str, preco: float, ativo: bool) -> None:
+    def update_product(
+        self,
+        product_id: int,
+        nome: str,
+        preco: float,
+        ativo: bool,
+        barraquinha_id: int | None = None,
+    ) -> None:
         with self.connect() as conn:
             conn.execute(
-                "UPDATE produtos SET nome=?, preco=?, ativo=? WHERE id=?",
-                (nome.strip(), preco, int(ativo), product_id),
+                "UPDATE produtos SET nome=?, preco=?, ativo=?, barraquinha_id=? WHERE id=?",
+                (nome.strip(), preco, int(ativo), barraquinha_id, product_id),
             )
 
     def deactivate_product(self, product_id: int) -> None:
@@ -242,10 +295,13 @@ class Database:
         with self.connect() as conn:
             rows = conn.execute(
                 """
-                SELECT id, venda_id, produto_id, nome_produto, quantidade, preco_unitario, subtotal
-                FROM itens_venda
-                WHERE venda_id = ?
-                ORDER BY id
+                SELECT i.id, i.venda_id, i.produto_id, i.nome_produto, i.quantidade, i.preco_unitario, i.subtotal,
+                       b.nome AS barraquinha_nome
+                FROM itens_venda i
+                LEFT JOIN produtos p ON p.id = i.produto_id
+                LEFT JOIN barraquinhas b ON b.id = p.barraquinha_id
+                WHERE i.venda_id = ?
+                ORDER BY i.id
                 """,
                 (venda_id,),
             ).fetchall()
@@ -258,9 +314,15 @@ class Database:
                 quantidade=r["quantidade"],
                 preco_unitario=r["preco_unitario"],
                 subtotal=r["subtotal"],
+                barraquinha_nome=r["barraquinha_nome"],
             )
             for r in rows
         ]
+
+    def delete_sale(self, venda_id: int) -> None:
+        with self.transaction() as conn:
+            conn.execute("DELETE FROM itens_venda WHERE venda_id = ?", (venda_id,))
+            conn.execute("DELETE FROM vendas WHERE id = ?", (venda_id,))
 
     def sale_by_id(self, venda_id: int) -> Sale | None:
         with self.connect() as conn:
