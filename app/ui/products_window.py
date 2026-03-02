@@ -45,6 +45,7 @@ class ProductsWindow(QWidget):
         btn_new = QPushButton("Novo")
         btn_save = QPushButton("Salvar")
         btn_remove = QPushButton("Desativar")
+        btn_delete = QPushButton("Excluir")
 
         form = QFormLayout()
         form.addRow(QLabel("Nome:"), self.nome_input)
@@ -59,6 +60,7 @@ class ProductsWindow(QWidget):
         actions.addWidget(btn_new)
         actions.addWidget(btn_save)
         actions.addWidget(btn_remove)
+        actions.addWidget(btn_delete)
 
         layout = QVBoxLayout(self)
         layout.addLayout(top)
@@ -71,6 +73,7 @@ class ProductsWindow(QWidget):
         btn_new.clicked.connect(self.clear_form)
         btn_save.clicked.connect(self.save_product)
         btn_remove.clicked.connect(self.deactivate_product)
+        btn_delete.clicked.connect(self.delete_product)
 
         self.load_barraquinhas()
         self.load_products()
@@ -165,6 +168,30 @@ class ProductsWindow(QWidget):
             QMessageBox.information(self, "Sucesso", "Produto desativado.")
         except Exception as exc:
             QMessageBox.critical(self, "Erro", f"Falha ao desativar: {exc}")
+
+    def delete_product(self) -> None:
+        if self.selected_id is None:
+            QMessageBox.warning(self, "Atenção", "Selecione um produto.")
+            return
+
+        confirm = QMessageBox.question(
+            self,
+            "Excluir produto",
+            "Tem certeza que deseja excluir este produto?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+
+        try:
+            self.db.delete_product(self.selected_id)
+            self.clear_form()
+            self.load_products()
+            self.products_changed.emit()
+            QMessageBox.information(self, "Sucesso", "Produto excluído.")
+        except Exception as exc:
+            QMessageBox.critical(self, "Erro", f"Falha ao excluir: {exc}")
 
     def clear_form(self) -> None:
         self.selected_id = None

@@ -180,6 +180,10 @@ class Database:
         with self.connect() as conn:
             conn.execute("UPDATE produtos SET ativo=0 WHERE id=?", (product_id,))
 
+    def delete_product(self, product_id: int) -> None:
+        with self.connect() as conn:
+            conn.execute("DELETE FROM produtos WHERE id=?", (product_id,))
+
     def list_barraquinhas(self, include_inactive: bool = False) -> list[Barraquinha]:
         where = "" if include_inactive else "WHERE ativo = 1"
         with self.connect() as conn:
