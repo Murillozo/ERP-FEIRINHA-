@@ -7,6 +7,7 @@ from typing import Any, TypedDict
 
 class AppConfig(TypedDict, total=False):
     nome_da_loja: str
+    largura_recibo_mm: int
     tipo_impressora: str
     usb_vendor_id: str
     usb_product_id: str
@@ -17,6 +18,7 @@ class AppConfig(TypedDict, total=False):
 
 DEFAULT_CONFIG: AppConfig = {
     "nome_da_loja": "Feirinha do Murillo",
+    "largura_recibo_mm": 80,
     "tipo_impressora": "usb",
     "usb_vendor_id": "0x0000",
     "usb_product_id": "0x0000",

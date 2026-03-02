@@ -30,8 +30,8 @@ class BarraquinhasWindow(QWidget):
         self.ativo_checkbox = QCheckBox("Ativa")
         self.ativo_checkbox.setChecked(True)
 
-        self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(["ID", "Nome", "Ativa"])
+        self.table = QTableWidget(0, 2)
+        self.table.setHorizontalHeaderLabels(["Nome", "Ativa"])
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
 
@@ -64,18 +64,19 @@ class BarraquinhasWindow(QWidget):
         data = self.db.list_barraquinhas(include_inactive=True)
         self.table.setRowCount(len(data))
         for row, item in enumerate(data):
-            self.table.setItem(row, 0, QTableWidgetItem(str(item.id)))
-            self.table.setItem(row, 1, QTableWidgetItem(item.nome))
-            self.table.setItem(row, 2, QTableWidgetItem("Sim" if item.ativo else "Não"))
+            name_item = QTableWidgetItem(item.nome)
+            name_item.setData(Qt.UserRole, item.id)
+            self.table.setItem(row, 0, name_item)
+            self.table.setItem(row, 1, QTableWidgetItem("Sim" if item.ativo else "Não"))
         self.table.resizeColumnsToContents()
 
     def _on_table_select(self) -> None:
         row = self.table.currentRow()
         if row < 0:
             return
-        self.selected_id = int(self.table.item(row, 0).text())
-        self.nome_input.setText(self.table.item(row, 1).text())
-        self.ativo_checkbox.setChecked(self.table.item(row, 2).text() == "Sim")
+        self.selected_id = int(self.table.item(row, 0).data(Qt.UserRole))
+        self.nome_input.setText(self.table.item(row, 0).text())
+        self.ativo_checkbox.setChecked(self.table.item(row, 1).text() == "Sim")
 
     def save_barraquinha(self) -> None:
         nome = self.nome_input.text().strip()

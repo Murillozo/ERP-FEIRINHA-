@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable
 
-from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 
@@ -25,12 +24,19 @@ class ReceiptPDFGenerator:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         filepath = self.output_dir / f"recibo_venda_{sale.id}.pdf"
 
-        c = canvas.Canvas(str(filepath), pagesize=A4)
-        width, height = A4
+        receipt_width_mm = int(self.config.get("largura_recibo_mm", 80))
+        if receipt_width_mm not in (58, 80):
+            receipt_width_mm = 80
 
-        receipt_width = 120 * mm
-        left = (width - receipt_width) / 2
-        y = height - 30 * mm
+        item_list = list(items)
+        line_count = 8 + (2 * len(item_list))
+        page_height = max(100, 20 + line_count * 6) * mm
+        receipt_width = receipt_width_mm * mm
+
+        c = canvas.Canvas(str(filepath), pagesize=(receipt_width, page_height))
+
+        left = 2 * mm
+        y = page_height - 8 * mm
 
         def line(text: str, bold: bool = False, size: int = 10) -> None:
             nonlocal y
@@ -38,10 +44,10 @@ class ReceiptPDFGenerator:
             c.drawString(left, y, text)
             y -= 6 * mm
 
-        line(self.config.get("nome_da_loja", "Feirinha do Murillo"), bold=True, size=14)
+        line("RECIBO", bold=True, size=13)
         line("-" * 45)
 
-        for item in items:
+        for item in item_list:
             line(_cut_name(item.nome_produto), bold=True)
             line(
                 f"{item.quantidade:.2f} x R$ {item.preco_unitario:.2f}"
