@@ -29,7 +29,8 @@ class ReceiptPDFGenerator:
             receipt_width_mm = 80
 
         item_list = list(items)
-        line_count = 8 + (2 * len(item_list))
+        extra_lines = sum(1 for item in item_list if item.barraquinha_nome)
+        line_count = 8 + (2 * len(item_list)) + extra_lines
         page_height = max(100, 20 + line_count * 6) * mm
         receipt_width = receipt_width_mm * mm
 
@@ -49,6 +50,8 @@ class ReceiptPDFGenerator:
 
         for item in item_list:
             line(_cut_name(item.nome_produto), bold=True)
+            if item.barraquinha_nome:
+                line(f"[{_cut_name(item.barraquinha_nome)}]", size=9)
             line(
                 f"{item.quantidade:.2f} x R$ {item.preco_unitario:.2f}"
                 f" = R$ {item.subtotal:.2f}",
